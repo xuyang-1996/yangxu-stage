@@ -269,6 +269,16 @@ async function cloudSave(){
 async function adminLogin(pwd){
   pwd = (pwd||"").trim();
   if(!pwd){ toast("请输入管理密码"); return false; }
+  // 本地模式（连不上云端）→ 无需云验证，自动开启编辑
+  if(!cloudMode){
+    isAdmin = true;
+    adminKeyStored = pwd;
+    localStorage.setItem(ADMIN_KEY_STORE, pwd);
+    closeAdminModal();
+    updateAdminUI();
+    toast("✅ 本地模式已开启编辑（不依赖云端）");
+    return true;
+  }
   try{
     const res = await fetch(SUPABASE_URL + "/rest/v1/settings?select=value&key=eq.admin_key", {
       headers:{ apikey:SUPABASE_PUBLISHABLE_KEY, Authorization:"Bearer "+SUPABASE_PUBLISHABLE_KEY, "x-admin-key":pwd, "Content-Type":"application/json" }
@@ -286,7 +296,7 @@ async function adminLogin(pwd){
     }
     toast("密码错误，请重试");
     return false;
-  }catch(e){ toast("网络异常，无法验证"); return false; }
+  }catch(e){ toast("网络异常，无法连接 Supabase 验证"); return false; }
 }
 function adminLogout(){
   isAdmin = false;
@@ -726,19 +736,15 @@ function updateAdminUI(){
   if(bk) bk.hidden = readonly;
   if(rs) rs.hidden = readonly;
   if(ex) ex.hidden = readonly;
-  // 管理按钮文案与状态
+  // 管理按钮：仅云模式显示（本地模式自动可编辑，无需登录）
   const lb = $("#adminLoginBtn"), st = $("#adminState");
-  if(lb){
-    lb.innerHTML = isAdmin
-      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>退出管理 · Exit Admin'
-      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg>管理员登录 · Admin';
-  }
+  if(lb) lb.hidden = !cloudMode;
   if(st){
     if(cloudMode){
       st.textContent = isAdmin ? "云端模式 · 管理员（可编辑）" : "云端模式 · 访客（只读）";
       st.style.color = isAdmin ? "#1d3b8a" : "#9aa3b2";
     }else{
-      st.textContent = "本地模式 · 数据仅存本浏览器";
+      st.textContent = "本地模式 · 自动可编辑（数据仅存本浏览器）";
       st.style.color = "#9aa3b2";
     }
   }
@@ -1270,13 +1276,15 @@ function bindEvents(){
 async function init(){
   bindEvents();
   applyAdminState();          // 恢复上次登录的管理员状态
-  await cloudInit();          // 尝试云端（失败自动回退本地）
+  const cloudOk = await cloudInit();  // 尝试云端（失败自动回退本地）
   if(!cloudMode) loadLocal();
   updateAdminUI();
   populateYearOptions();
   renderAll();
-  if(cloudMode){
+  if(cloudOk){
     toast(isAdmin ? "☁️ 已连接云端 · 管理员模式" : "☁️ 已连接云端 · 访客只读");
+  }else{
+    toast("⚠️ 未连接到云端，已切换本地模式（可正常编辑）", 3000);
   }
 }
 
