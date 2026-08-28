@@ -11,7 +11,7 @@
 <!-- 侧边栏 -->
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-head">
-    <div class="logo-mark" id="logoMark"></div>
+    <div class="logo-mark"><img src="img/logo.png" alt="logo"></div>
     <span class="logo-text">Yang Xu's stage</span>
   </div>
 
@@ -31,9 +31,13 @@
   </nav>
 
   <div class="sidebar-foot">
+    <button class="btn-ghost" id="exportListBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 3h6l5 5v11a2 2 0 01-2 2H9"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
+      导出列表 · Export List
+    </button>
     <button class="btn-ghost" id="exportBtn">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
-      导出数据
+      导出数据 · Export Data
     </button>
     <div class="side-tip">数据保存在本地浏览器</div>
   </div>
@@ -126,6 +130,7 @@
               <option value="design-award">设计奖项</option>
               <option value="cert">职称证书</option>
               <option value="diploma">学历学位证书</option>
+              <option value="other">简历</option>
             </select>
             <select id="filterStatus" class="filter-select">
               <option value="">全部状态</option>
@@ -187,6 +192,7 @@
             <option value="design-award">设计奖项</option>
             <option value="cert">职称证书</option>
             <option value="diploma">学历学位证书</option>
+            <option value="other">简历</option>
           </select>
         </div>
         <div>
