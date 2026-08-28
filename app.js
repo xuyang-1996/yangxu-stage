@@ -557,42 +557,49 @@ async function dlZip(){
 /* ============================================================
    数据备份 / 恢复（部署迁移用）
    ============================================================ */
-/* 解析 STORE 模式 ZIP → [{name, data(ArrayBuffer)}] */
-function parseZip(buf){
-  return new Promise((resolve, reject)=>{
-    try{
-      const u8 = new Uint8Array(buf);
-      const dv = new DataView(buf);
-      // 定位 EOCD
-      let eocd = -1;
-      for(let i = u8.length - 22; i >= 0 && i >= u8.length - 65557; i--){
-        if(u8[i]===0x50 && u8[i+1]===0x4B && u8[i+2]===0x05 && u8[i+3]===0x06){ eocd = i; break; }
+/* 解析 ZIP → [{name, data(ArrayBuffer)}]（支持 STORE 与 DEFLATE） */
+async function parseZip(buf){
+  const u8 = new Uint8Array(buf);
+  const dv = new DataView(buf);
+  // 定位 EOCD
+  let eocd = -1;
+  for(let i = u8.length - 22; i >= 0 && i >= u8.length - 65557; i--){
+    if(u8[i]===0x50 && u8[i+1]===0x4B && u8[i+2]===0x05 && u8[i+3]===0x06){ eocd = i; break; }
+  }
+  if(eocd < 0) throw new Error("无法识别 ZIP 文件");
+  const entryCount = dv.getUint16(eocd + 10, true);
+  let cd = dv.getUint32(eocd + 16, true);
+  const files = [];
+  const dec = new TextDecoder();
+  for(let n = 0; n < entryCount; n++){
+    if(!(u8[cd]===0x50 && u8[cd+1]===0x4B && u8[cd+2]===0x01 && u8[cd+3]===0x02)) break;
+    const method = dv.getUint16(cd + 10, true);
+    const compSize = dv.getUint32(cd + 20, true);
+    const nameLen = dv.getUint16(cd + 28, true);
+    const extraLen = dv.getUint16(cd + 30, true);
+    const commentLen = dv.getUint16(cd + 32, true);
+    const lho = dv.getUint32(cd + 42, true);
+    const nameBytes = u8.subarray(cd + 46, cd + 46 + nameLen);
+    const name = dec.decode(nameBytes);
+    if(!name.endsWith("/")){ // 跳过目录条目
+      const dataStart = lho + 30 + nameLen + extraLen;
+      if(method === 0){
+        // 未压缩（STORE）
+        files.push({ name, data: buf.slice(dataStart, dataStart + compSize) });
+      }else if(method === 8 && typeof DecompressionStream !== "undefined"){
+        // DEFLATE（Windows 右键压缩等）→ 浏览器原生解压
+        const raw = new Uint8Array(buf, dataStart, compSize);
+        const ds = new DecompressionStream("deflate-raw");
+        const stream = new Blob([raw]).stream().pipeThrough(ds);
+        const ab = await new Response(stream).arrayBuffer();
+        files.push({ name, data: ab });
+      }else{
+        throw new Error("备份包压缩格式不支持，请用网站「备份」按钮重新生成");
       }
-      if(eocd < 0) throw new Error("无法识别 ZIP 文件");
-      const entryCount = dv.getUint16(eocd + 10, true);
-      let cd = dv.getUint32(eocd + 16, true);
-      const files = [];
-      const dec = new TextDecoder();
-      for(let n = 0; n < entryCount; n++){
-        if(!(u8[cd]===0x50 && u8[cd+1]===0x4B && u8[cd+2]===0x01 && u8[cd+3]===0x02)) break;
-        const method = dv.getUint16(cd + 10, true);
-        if(method !== 0) throw new Error("仅支持未压缩的备份包（STORE）");
-        const compSize = dv.getUint32(cd + 20, true);
-        const nameLen = dv.getUint16(cd + 28, true);
-        const extraLen = dv.getUint16(cd + 30, true);
-        const commentLen = dv.getUint16(cd + 32, true);
-        const lho = dv.getUint32(cd + 42, true);
-        const nameBytes = u8.subarray(cd + 46, cd + 46 + nameLen);
-        const name = dec.decode(nameBytes);
-        if(!name.endsWith("/")){ // 跳过目录条目
-          const dataStart = lho + 30 + nameLen + extraLen;
-          files.push({ name, data: buf.slice(dataStart, dataStart + compSize) });
-        }
-        cd += 46 + nameLen + extraLen + commentLen;
-      }
-      resolve(files);
-    }catch(e){ reject(e); }
-  });
+    }
+    cd += 46 + nameLen + extraLen + commentLen;
+  }
+  return files;
 }
 
 /* 导出备份：manifest.json + attachments/* */
@@ -624,31 +631,36 @@ async function exportBackup(){
 
 /* 导入备份：读取 zip → 写入 localStorage + IndexedDB */
 async function importBackup(file){
-  toast("正在解析备份包…");
+  toast("正在解析备份包…", 3000);
   let files;
   try{ files = await parseZip(await file.arrayBuffer()); }
-  catch(e){ toast("备份包解析失败：" + (e.message||"格式不支持")); return; }
+  catch(e){ toast("❌ 备份包解析失败：" + (e.message||"格式不支持") + "。请确认是网站「备份」按钮下载的 zip", 5000); return; }
 
   const man = files.find(f=>f.name==="manifest.json");
-  if(!man){ toast("备份包缺少 manifest.json，无法恢复"); return; }
+  if(!man){ toast("❌ 这个 zip 不是本站备份包（缺少 manifest.json），请用网站「备份」按钮导出", 5000); return; }
   let data;
   try{ data = JSON.parse(new TextDecoder().decode(man.data)); }
-  catch(e){ toast("备份包数据损坏"); return; }
+  catch(e){ toast("❌ 备份包数据损坏，无法读取", 5000); return; }
   const list = Array.isArray(data) ? data : (data.results||[]);
-  if(!list.length){ toast("备份包中没有成果数据"); return; }
+  if(!list.length){ toast("❌ 备份包中没有成果数据", 5000); return; }
 
   // 恢复附件
-  let att = 0;
+  let att = 0, attFail = 0;
   for(const f of files){
     if(!f.name.startsWith("attachments/")) continue;
     const id = f.name.slice("attachments/".length);
-    try{ await putAttBlob(id, new Blob([f.data])); att++; }catch(e){}
+    try{ await putAttBlob(id, new Blob([f.data])); att++; }
+    catch(e){ attFail++; }
   }
   results = list;
   save();
   renderAll();
   renderDlTypes();
-  toast(`✓ 恢复完成：${results.length} 条成果，${att} 个附件`);
+  if(attFail){
+    toast(`✓ 成果已恢复 ${results.length} 条，但 ${attFail} 个附件上传失败——请检查 Supabase 后台 Storage 策略是否已配置`, 6000);
+  }else{
+    toast(`✓ 恢复完成：${results.length} 条成果，${att} 个附件`, 4000);
+  }
 }
 
 /* ---------- 渲染：材料板块大色块 ---------- */
