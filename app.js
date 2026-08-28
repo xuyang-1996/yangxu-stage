@@ -738,7 +738,10 @@ function updateAdminUI(){
   if(ex) ex.hidden = readonly;
   // 管理按钮：仅云模式显示（本地模式自动可编辑，无需登录）
   const lb = $("#adminLoginBtn"), st = $("#adminState");
-  if(lb) lb.hidden = !cloudMode;
+  if(lb){
+    lb.innerHTML = isAdmin ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>退出管理 · Exit Admin' : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg>管理员登录 · Admin';
+    lb.hidden = !cloudMode;
+  }
   if(st){
     if(cloudMode){
       st.textContent = isAdmin ? "云端模式 · 管理员（可编辑）" : "云端模式 · 访客（只读）";
