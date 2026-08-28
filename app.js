@@ -5,6 +5,39 @@
 "use strict";
 
 const STORAGE_KEY = "pw_results_v1";
+const ADMIN_KEY_STORE = "pw_admin_key_v1";
+
+/* ---------- Supabase 云端配置（Yang Xu'S stage） ----------
+   如需更换数据库，只需修改下面两个值 */
+const SUPABASE_URL = "https://jagmtxmmbfavlwiqxipt.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_J9tI4DG5h5ROB1pejbgiVQ_MPLAxvy9";
+
+/* 云模式状态 */
+let cloudMode = false;   // 是否成功连接云端（连不上自动回退本地）
+let isAdmin = false;     // 是否管理员（可编辑）
+let adminKeyStored = ""; // 管理密码（内存中）
+function adminKey(){ return adminKeyStored || localStorage.getItem(ADMIN_KEY_STORE) || ""; }
+
+/* 云端请求封装（PostgREST / Storage） */
+function cloudHeaders(extra){
+  const h = {
+    "apikey": SUPABASE_PUBLISHABLE_KEY,
+    "Authorization": "Bearer " + SUPABASE_PUBLISHABLE_KEY,
+    "Content-Type": "application/json"
+  };
+  const k = adminKey();
+  if(k) h["x-admin-key"] = k;
+  if(extra) Object.assign(h, extra);
+  return h;
+}
+async function cloudFetch(path, opts){
+  opts = opts || {};
+  const res = await fetch(SUPABASE_URL + path, Object.assign({}, opts, { headers: cloudHeaders(opts.headers) }));
+  if(!res.ok) throw new Error("HTTP " + res.status);
+  const ct = (res.headers.get("content-type")||"").toLowerCase();
+  if(ct.includes("json")) return res.json();
+  return res;
+}
 
 /* ---------- 简约线性图标集（stroke 风格） ---------- */
 const ICONS = {
@@ -112,18 +145,67 @@ function fileDel(id){
   }));
 }
 
+/* ---------- 附件存储封装（云模式 → Supabase Storage；本地模式 → IndexedDB） ---------- */
+async function putAttBlob(aid, blob){
+  if(cloudMode){
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/attachments/${encodeURIComponent(aid)}`, {
+      method:"POST",
+      headers:{
+        "apikey":SUPABASE_PUBLISHABLE_KEY,
+        "Authorization":"Bearer "+SUPABASE_PUBLISHABLE_KEY,
+        "Content-Type": blob.type || "application/octet-stream",
+        "x-upsert":"true",
+        ...(adminKey()?{"x-admin-key":adminKey()}:{})
+      },
+      body: blob
+    });
+    if(!res.ok) throw new Error("上传失败 HTTP "+res.status);
+  }else{
+    await filePut(aid, blob);
+  }
+}
+async function getAttBlob(aid){
+  if(cloudMode){
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/public/attachments/${encodeURIComponent(aid)}`);
+    if(!res.ok) throw new Error("附件获取失败");
+    return await res.blob();
+  }
+  const rec = await fileGet(aid);
+  return rec ? rec.blob : null;
+}
+async function delAttBlob(aid){
+  if(cloudMode){
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/attachments/${encodeURIComponent(aid)}`, {
+      method:"DELETE",
+      headers:{ apikey:SUPABASE_PUBLISHABLE_KEY, Authorization:"Bearer "+SUPABASE_PUBLISHABLE_KEY, ...(adminKey()?{"x-admin-key":adminKey()}:{}) }
+    });
+    if(!res.ok && res.status!==404) throw new Error("删除失败 HTTP "+res.status);
+  }else{
+    await fileDel(aid);
+  }
+}
+/* 查找附件元数据 */
+function attMeta(aid){
+  for(const r of results){ const m=(r.attachments||[]).find(a=>a.id===aid); if(m) return m; }
+  return null;
+}
+
 /* ---------- 工具 ---------- */
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
 function uid(){ return "r" + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
-function load(){
+function loadLocal(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
     results = raw ? JSON.parse(raw) : null;
-    if(!results || !Array.isArray(results)){ results = JSON.parse(JSON.stringify(SEED)); save(); }
-  }catch(e){ results = JSON.parse(JSON.stringify(SEED)); save(); }
+    if(!results || !Array.isArray(results)){ results = JSON.parse(JSON.stringify(SEED)); saveLocal(); }
+  }catch(e){ results = JSON.parse(JSON.stringify(SEED)); saveLocal(); }
+  migrateData();
+  results.sort((a,b)=> (b.year-a.year) || (String(b.id).localeCompare(String(a.id))));
+}
+function migrateData(){
   // 旧版类型迁移到新版分类
   let migrated = false;
   results.forEach(r=>{
@@ -133,10 +215,95 @@ function load(){
     }
     if(r.attachments === undefined){ r.attachments = []; }
   });
-  if(migrated) save();
-  results.sort((a,b)=> (b.year-a.year) || (String(b.id).localeCompare(String(a.id))));
+  if(migrated) saveLocal();
 }
-function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(results)); }
+function saveLocal(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(results)); }catch(e){} }
+
+/* 保存：本地缓存 + （云模式管理员时）同步云端 */
+function save(){
+  saveLocal();
+  if(cloudMode && isAdmin){
+    cloudSave().then(()=>{}).catch(e=> toast("云端同步失败：" + (e&&e.message||"请重试")));
+  }
+}
+
+/* 云端初始化：拉取全部成果 */
+async function cloudInit(){
+  try{
+    const rows = await cloudFetch("/rest/v1/results?select=*");
+    if(!Array.isArray(rows)) throw new Error("bad response");
+    cloudMode = true;
+    results = rows.map(r=>r.data).filter(Boolean);
+    migrateData();
+    results.sort((a,b)=> (b.year-a.year) || (String(b.id).localeCompare(String(a.id))));
+    saveLocal();
+    return true;
+  }catch(e){
+    cloudMode = false;
+    return false;
+  }
+}
+
+/* 云端全量同步（upsert 本地全部 + 删除本地没有的） */
+async function cloudSave(){
+  if(!cloudMode || !isAdmin) return;
+  const remote = await cloudFetch("/rest/v1/results?select=id");
+  const remoteIds = new Set((remote||[]).map(r=>r.id));
+  const localIds = new Set(results.map(r=>r.id));
+  for(const id of remoteIds){
+    if(!localIds.has(id)){
+      await cloudFetch("/rest/v1/results?id=eq." + encodeURIComponent(id), { method:"DELETE" });
+    }
+  }
+  if(results.length){
+    const rows = results.map(r=>({ id:r.id, data:r }));
+    await cloudFetch("/rest/v1/results", {
+      method:"POST",
+      headers:{ "Prefer":"resolution=merge-duplicates" },
+      body: JSON.stringify(rows)
+    });
+  }
+}
+
+/* ---------- 管理员登录 / 退出 ---------- */
+async function adminLogin(pwd){
+  pwd = (pwd||"").trim();
+  if(!pwd){ toast("请输入管理密码"); return false; }
+  try{
+    const res = await fetch(SUPABASE_URL + "/rest/v1/settings?select=value&key=eq.admin_key", {
+      headers:{ apikey:SUPABASE_PUBLISHABLE_KEY, Authorization:"Bearer "+SUPABASE_PUBLISHABLE_KEY, "x-admin-key":pwd, "Content-Type":"application/json" }
+    });
+    if(!res.ok){ toast("验证失败，请重试"); return false; }
+    const rows = await res.json();
+    if(rows && rows.length && rows[0].value === pwd){
+      isAdmin = true;
+      adminKeyStored = pwd;
+      localStorage.setItem(ADMIN_KEY_STORE, pwd);
+      closeAdminModal();
+      updateAdminUI();
+      toast("✅ 已进入管理模式");
+      return true;
+    }
+    toast("密码错误，请重试");
+    return false;
+  }catch(e){ toast("网络异常，无法验证"); return false; }
+}
+function adminLogout(){
+  isAdmin = false;
+  adminKeyStored = "";
+  localStorage.removeItem(ADMIN_KEY_STORE);
+  updateAdminUI();
+  toast("已退出管理模式");
+}
+function applyAdminState(){
+  if(adminKey()) isAdmin = true;
+}
+function openAdminModal(){
+  $("#adminPwd").value = "";
+  $("#adminMask").hidden = false;
+  setTimeout(()=>{ const el=$("#adminPwd"); if(el) el.focus(); }, 60);
+}
+function closeAdminModal(){ $("#adminMask").hidden = true; }
 
 function toast(msg, dur){
   const t = $("#toast");
@@ -333,6 +500,7 @@ function updateDlInfo(){
 
 /* 打包下载所选板块 */
 async function dlZip(){
+  if(!guardDownload()) return;
   if(!dlSelected.size){ toast("请先勾选要打包的板块"); return; }
   const files = [];
   for(const t of dlSelected){
@@ -341,9 +509,9 @@ async function dlZip(){
     for(const r of rs){
       for(const a of (r.attachments||[])){
         try{
-          const rec = await fileGet(a.id);
-          if(rec && rec.blob){
-            files.push({ name: `${cfg.label}/${sanitizeName(r.title)}/${sanitizeName(a.name)}`, blob: rec.blob });
+          const blob = await getAttBlob(a.id);
+          if(blob){
+            files.push({ name: `${cfg.label}/${sanitizeName(r.title)}/${sanitizeName(a.name)}`, blob });
           }
         }catch(e){}
       }
@@ -429,8 +597,8 @@ async function exportBackup(){
   for(const r of results){
     for(const a of (r.attachments||[])){
       try{
-        const rec = await fileGet(a.id);
-        if(rec && rec.blob){ files.push({ name:"attachments/"+a.id, blob:rec.blob }); att++; }
+        const blob = await getAttBlob(a.id);
+        if(blob){ files.push({ name:"attachments/"+a.id, blob }); att++; }
       }catch(e){}
     }
   }
@@ -464,7 +632,7 @@ async function importBackup(file){
   for(const f of files){
     if(!f.name.startsWith("attachments/")) continue;
     const id = f.name.slice("attachments/".length);
-    try{ await filePut(id, new Blob([f.data])); att++; }catch(e){}
+    try{ await putAttBlob(id, new Blob([f.data])); att++; }catch(e){}
   }
   results = list;
   save();
@@ -529,8 +697,53 @@ function renderManage(){
   });
   $("#filterResult").textContent = `共 ${list.length} 条成果`;
   $("#manageEmpty").hidden = list.length !== 0;
-  $("#manageList").innerHTML = list.map(r=>itemHtml(r,true)).join("");
+  $("#manageList").innerHTML = list.map(r=>itemHtml(r, canEdit())).join("");
   updateBanner();
+}
+
+/* 是否可编辑（云模式访客为只读） */
+function canEdit(){ return !(cloudMode && !isAdmin); }
+
+/* 下载/预览/打包 权限守卫：未登录时提示并弹出登录框 */
+function guardDownload(){
+  if(!canEdit()){
+    toast("🔒 请先管理员登录后下载材料");
+    setTimeout(openAdminModal, 500);
+    return false;
+  }
+  return true;
+}
+
+/* ---------- 权限相关 UI 更新 ---------- */
+function updateAdminUI(){
+  const readonly = !canEdit();
+  // 新增按钮（顶栏 + 管理页）
+  const ab1 = $("#addBtn"), ab2 = $("#manageAddBtn");
+  if(ab1) ab1.hidden = readonly;
+  if(ab2) ab2.hidden = readonly;
+  // 备份 / 恢复 / 导出数据（仅管理员；导出列表访客可用）
+  const bk = $("#backupBtn"), rs = $("#restoreBtn"), ex = $("#exportBtn");
+  if(bk) bk.hidden = readonly;
+  if(rs) rs.hidden = readonly;
+  if(ex) ex.hidden = readonly;
+  // 管理按钮文案与状态
+  const lb = $("#adminLoginBtn"), st = $("#adminState");
+  if(lb){
+    lb.innerHTML = isAdmin
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>退出管理 · Exit Admin'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg>管理员登录 · Admin';
+  }
+  if(st){
+    if(cloudMode){
+      st.textContent = isAdmin ? "云端模式 · 管理员（可编辑）" : "云端模式 · 访客（只读）";
+      st.style.color = isAdmin ? "#1d3b8a" : "#9aa3b2";
+    }else{
+      st.textContent = "本地模式 · 数据仅存本浏览器";
+      st.style.color = "#9aa3b2";
+    }
+  }
+  renderManage();
+  renderDlTypes();
 }
 
 /* ---------- 渲染：时间线 ---------- */
@@ -620,9 +833,9 @@ function openModal(id, presetType){
   setTimeout(()=> $("#f-title").focus(), 60);
 }
 function closeModal(){
-  // 新增模式下取消：清理已上传到 IndexedDB 的临时附件
+  // 新增模式下取消：清理已上传的临时附件（云端或本地）
   if(pendingId){
-    draftAttachments.forEach(a=>{ try{ fileDel(a.id); }catch(e){} });
+    draftAttachments.forEach(a=>{ try{ delAttBlob(a.id).catch(()=>{}); }catch(e){} });
     draftAttachments = [];
     pendingId = null;
   }
@@ -666,7 +879,7 @@ function closeDel(){ $("#delMask").hidden = true; deletingId = null; }
 async function confirmDel(){
   const r = results.find(x=>x.id===deletingId);
   if(r && r.attachments && r.attachments.length){
-    for(const a of r.attachments){ try{ await fileDel(a.id); }catch(e){} }
+    for(const a of r.attachments){ try{ await delAttBlob(a.id); }catch(e){} }
   }
   results = results.filter(x=>x.id!==deletingId);
   save();
@@ -811,7 +1024,7 @@ async function handleAttachFiles(files){
     if(!f || !f.size) continue;
     const id = uid();
     try{
-      await filePut(id, f);
+      await putAttBlob(id, f);
       const meta = { id, name:f.name, size:f.size, mime:f.type||"", at:Date.now() };
       if(pendingId){
         draftAttachments.push(meta);
@@ -834,7 +1047,7 @@ async function removeFormAttach(aid){
     const r = results.find(x=>x.id===editingId);
     if(r){ r.attachments = (r.attachments||[]).filter(a=>a.id!==aid); save(); }
   }
-  try{ await fileDel(aid); }catch(e){}
+  try{ await delAttBlob(aid); }catch(e){}
   renderFormAttach();
   toast("附件已移除");
 }
@@ -857,19 +1070,22 @@ function openDetail(id){
   $("#detailAttachCount").textContent = list.length ? `(${list.length})` : "";
   $("#detailAttachEmpty").hidden = list.length !== 0;
   $("#detailAttachList").innerHTML = list.length ? list.map(a=>attachItemHtml(a,false)).join("") : "";
+  $("#detailEditBtn").hidden = !canEdit();
   $("#detailMask").hidden = false;
 }
 function closeDetail(){ $("#detailMask").hidden = true; detailId = null; }
 
 /* ---------- 附件下载 / 预览 ---------- */
 async function downloadAtt(aid){
+  if(!guardDownload()) return;
   try{
-    const rec = await fileGet(aid);
-    if(!rec || !rec.blob){ toast("附件不存在或已被移除"); return; }
-    const url = URL.createObjectURL(rec.blob);
+    const meta = attMeta(aid);
+    const blob = await getAttBlob(aid);
+    if(!blob){ toast("附件不存在或已被移除"); return; }
+    const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = rec.name || "attachment";
+    a.download = (meta && meta.name) || "attachment";
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -877,6 +1093,7 @@ async function downloadAtt(aid){
   }catch(e){ toast("下载失败，请重试"); }
 }
 async function downloadAllAtt(){
+  if(!guardDownload()) return;
   const r = results.find(x=>x.id===detailId);
   const list = (r && r.attachments) || [];
   if(!list.length){ toast("该成果暂无附件"); return; }
@@ -884,14 +1101,16 @@ async function downloadAllAtt(){
   toast(`已开始下载 ${list.length} 个附件（浏览器可能拦截多个下载，请允许）`);
 }
 async function previewAtt(aid){
+  if(!guardDownload()) return;
   window._previewAid = aid;
   try{
-    const rec = await fileGet(aid);
-    if(!rec || !rec.blob){ toast("附件不存在或已被移除"); return; }
+    const meta = attMeta(aid);
+    const blob = await getAttBlob(aid);
+    if(!blob){ toast("附件不存在或已被移除"); return; }
     if(previewUrl) URL.revokeObjectURL(previewUrl);
-    previewUrl = URL.createObjectURL(rec.blob);
+    previewUrl = URL.createObjectURL(blob);
     $("#previewImg").src = previewUrl;
-    $("#previewName").textContent = rec.name || "preview";
+    $("#previewName").textContent = (meta && meta.name) || "preview";
     $("#previewMask").hidden = false;
   }catch(e){ toast("预览失败"); }
 }
@@ -973,6 +1192,7 @@ function bindEvents(){
       switchView("manage");
       renderManage();
     }else{
+      if(!canEdit()){ toast("请先管理员登录后再添加"); return; }
       openModal(null, t);
     }
   });
@@ -1029,18 +1249,35 @@ function bindEvents(){
   $("#exportBtn").addEventListener("click", exportData);
   $("#exportListBtn").addEventListener("click", exportList);
 
+  // 管理员登录 / 退出
+  $("#adminLoginBtn").addEventListener("click", ()=>{
+    if(isAdmin){ adminLogout(); return; }
+    openAdminModal();
+  });
+  $("#adminClose").addEventListener("click", closeAdminModal);
+  $("#adminCancel").addEventListener("click", closeAdminModal);
+  $("#adminMask").addEventListener("click", e=>{ if(e.target===e.currentTarget) closeAdminModal(); });
+  $("#adminConfirm").addEventListener("click", ()=> adminLogin($("#adminPwd").value));
+  $("#adminPwd").addEventListener("keydown", e=>{ if(e.key==="Enter") adminLogin($("#adminPwd").value); });
+
   // 键盘：Esc 关闭弹层
   document.addEventListener("keydown", e=>{
-    if(e.key==="Escape"){ closeModal(); closeDel(); closeDetail(); closePreview(); }
+    if(e.key==="Escape"){ closeModal(); closeDel(); closeDetail(); closePreview(); closeAdminModal(); }
   });
 }
 
 /* ---------- 启动 ---------- */
-function init(){
-  load();
-  populateYearOptions();
+async function init(){
   bindEvents();
+  applyAdminState();          // 恢复上次登录的管理员状态
+  await cloudInit();          // 尝试云端（失败自动回退本地）
+  if(!cloudMode) loadLocal();
+  updateAdminUI();
+  populateYearOptions();
   renderAll();
+  if(cloudMode){
+    toast(isAdmin ? "☁️ 已连接云端 · 管理员模式" : "☁️ 已连接云端 · 访客只读");
+  }
 }
 
 document.addEventListener("DOMContentLoaded", init);

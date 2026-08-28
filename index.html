@@ -31,6 +31,10 @@
   </nav>
 
   <div class="sidebar-foot">
+    <button class="btn-ghost" id="adminLoginBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg>
+      管理员登录 · Admin
+    </button>
     <button class="btn-ghost" id="exportListBtn">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 3h6l5 5v11a2 2 0 01-2 2H9"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
       导出列表 · Export List
@@ -39,7 +43,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
       导出数据 · Export Data
     </button>
-    <div class="side-tip">数据保存在本地浏览器</div>
+    <div class="side-tip" id="adminState">数据保存在本地浏览器</div>
   </div>
 </aside>
 
@@ -229,7 +233,7 @@
           <span>点击上传证书扫描件 / PDF / 图片（可多选）</span>
           <input type="file" id="attachFileInput" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx,.zip">
         </div>
-        <p class="attach-tip">附件保存在浏览器本地（IndexedDB），可随时下载，也可复制到其他电脑</p>
+        <p class="attach-tip">附件保存于云端（或本地浏览器），随时可下载</p>
       </div>
     </form>
     <div class="modal-foot">
@@ -299,6 +303,26 @@
     <div class="preview-body"><img id="previewImg" alt="预览"></div>
     <div class="preview-foot">
       <button class="btn-primary" id="previewDownload">下载</button>
+    </div>
+  </div>
+</div>
+
+<!-- 管理员登录弹层 -->
+<div class="modal-mask" id="adminMask" hidden>
+  <div class="modal modal-sm">
+    <div class="modal-head">
+      <h3>管理员登录 · Admin Login</h3>
+      <button class="modal-close" id="adminClose">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="modal-body admin-body">
+      <p class="admin-hint">输入管理密码后，可新增 / 编辑 / 删除成果与附件；访客为只读模式。</p>
+      <input type="password" id="adminPwd" class="admin-pwd" placeholder="请输入管理密码" autocomplete="off">
+    </div>
+    <div class="modal-foot">
+      <button class="btn-plain" id="adminCancel">取消</button>
+      <button class="btn-primary" id="adminConfirm">登录</button>
     </div>
   </div>
 </div>
