@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yang Xu'S stage · 个人成果管理</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- 侧边栏 -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-head">
+    <div class="logo-mark" id="logoMark"></div>
+    <span class="logo-text">Yang Xu's stage</span>
+  </div>
+
+  <nav class="side-nav">
+    <a href="#" class="nav-item active" data-view="dashboard">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+      <span>工作台概览</span>
+    </a>
+    <a href="#" class="nav-item" data-view="manage">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h10M4 18h7"/><circle cx="19" cy="18" r="2.6"/></svg>
+      <span>成果管理</span>
+    </a>
+    <a href="#" class="nav-item" data-view="timeline">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h10M4 12h16M4 18h7"/><circle cx="17" cy="6" r="2.4"/><circle cx="13" cy="18" r="2.4"/></svg>
+      <span>成果时间线</span>
+    </a>
+  </nav>
+
+  <div class="sidebar-foot">
+    <button class="btn-ghost" id="exportBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+      导出数据
+    </button>
+    <div class="side-tip">数据保存在本地浏览器</div>
+  </div>
+</aside>
+
+<!-- 主区域 -->
+<main class="main">
+  <!-- 顶栏 -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="back-btn" id="backBtn" hidden title="返回 Yang Xu'S stage">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        <span>返回</span>
+      </button>
+    </div>
+    <div class="topbar-right">
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input type="text" id="globalSearch" placeholder="搜索成果标题、标签…  /  Search title, tags…">
+      </div>
+      <button class="btn-primary" id="addBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+        <span>新增成果 <em>+ Add</em></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- 视图容器 -->
+  <div class="view-wrap">
+
+    <!-- ========== 工作台概览 ========== -->
+    <section class="view active" id="view-dashboard">
+      <div class="blocks-grid" id="sectionBlocks"></div>
+
+      <!-- 下载中心 -->
+      <div class="card dl-card">
+        <div class="dl-types" id="dlTypeList"></div>
+        <div class="dl-foot">
+          <div class="dl-info" id="dlInfo">未选择板块 · No section selected</div>
+          <div class="dl-btns-row">
+            <button class="btn-primary btn-blue" id="dlToggle">全选 / 全不选 · Select All</button>
+            <button class="btn-primary btn-blue" id="dlZipBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+              <span>打包下载 <em>· Pack & Download</em></span>
+            </button>
+            <button class="btn-primary btn-blue" id="backupBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+              <span>备份 <em>· Backup</em></span>
+            </button>
+            <button class="btn-primary btn-blue" id="restoreBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21v-12m0 0l-4 4m4-4l4 4"/><path d="M4 7V5a2 2 0 012-2h12a2 2 0 012 2v2"/></svg>
+              <span>恢复 <em>· Restore</em></span>
+            </button>
+            <input type="file" id="restoreInput" accept=".zip" hidden>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== 成果管理 ========== -->
+    <section class="view" id="view-manage">
+      <!-- 板块横幅（钻取进入某分类时显示） -->
+      <div class="section-banner" id="manageBanner" hidden>
+        <div class="section-banner-inner">
+          <span class="type-badge" id="bannerBadge">📄</span>
+          <div>
+            <div class="section-name" id="bannerName"></div>
+            <div class="section-sub" id="bannerCount"></div>
+          </div>
+        </div>
+        <button class="btn-plain" id="bannerBack">← 返回全部</button>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <h3 id="manageTitle">成果列表</h3>
+          <button class="btn-primary" id="manageAddBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+            新增成果
+          </button>
+        </div>
+        <div class="filter-bar">
+          <div class="filter-group">
+            <select id="filterType" class="filter-select">
+              <option value="">全部类型</option>
+              <option value="book">著作</option>
+              <option value="journal">期刊论文</option>
+              <option value="conference">国际会议论文</option>
+              <option value="patent">专利</option>
+              <option value="duty">社会职责</option>
+              <option value="design-award">设计奖项</option>
+              <option value="cert">职称证书</option>
+              <option value="diploma">学历学位证书</option>
+            </select>
+            <select id="filterStatus" class="filter-select">
+              <option value="">全部状态</option>
+              <option value="ongoing">进行中</option>
+              <option value="done">已完成</option>
+            </select>
+            <select id="filterYear" class="filter-select">
+              <option value="">全部年份</option>
+            </select>
+          </div>
+          <div class="filter-result" id="filterResult"></div>
+        </div>
+        <div class="manage-list" id="manageList"></div>
+        <div class="empty-state" id="manageEmpty" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 6h16M4 12h10M4 18h7"/><circle cx="19" cy="18" r="2.6"/></svg>
+          <p>暂无匹配的成果，试试调整筛选条件</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== 时间线 ========== -->
+    <section class="view" id="view-timeline">
+      <div class="card timeline-card">
+        <div class="card-head">
+          <h3>成果历程</h3>
+          <span class="card-sub">按年份梳理你的成长足迹</span>
+        </div>
+        <div class="timeline" id="timelineWrap"></div>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<!-- 添加 / 编辑 模态框 -->
+<div class="modal-mask" id="modalMask" hidden>
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="modalTitle">新增成果</h3>
+      <button class="modal-close" id="modalClose">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <form id="resultForm" class="modal-body">
+      <input type="hidden" id="f-id">
+      <div class="form-row">
+        <label>成果标题 <em>*</em></label>
+        <input type="text" id="f-title" placeholder="例如：基于大模型的智能文档理解系统" required>
+      </div>
+      <div class="form-row form-grid2">
+        <div>
+          <label>类型 <em>*</em></label>
+          <select id="f-type" required>
+            <option value="book">著作</option>
+            <option value="journal">期刊论文</option>
+            <option value="conference">国际会议论文</option>
+            <option value="patent">专利</option>
+            <option value="duty">社会职责</option>
+            <option value="design-award">设计奖项</option>
+            <option value="cert">职称证书</option>
+            <option value="diploma">学历学位证书</option>
+          </select>
+        </div>
+        <div>
+          <label>状态</label>
+          <select id="f-status">
+            <option value="done">已完成</option>
+            <option value="ongoing">进行中</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row form-grid2">
+        <div>
+          <label>完成年份 <em>*</em></label>
+          <select id="f-year" required></select>
+        </div>
+        <div>
+          <label>标签（逗号分隔）</label>
+          <input type="text" id="f-tags" placeholder="AI, 大模型, 团队协作">
+        </div>
+      </div>
+      <div class="form-row">
+        <label>相关链接</label>
+        <input type="url" id="f-link" placeholder="https://…">
+      </div>
+      <div class="form-row">
+        <label>成果描述</label>
+        <textarea id="f-desc" rows="3" placeholder="简要描述该成果的内容、价值与影响…"></textarea>
+      </div>
+      <div class="form-row">
+        <label>证书 / 材料附件</label>
+        <div class="attach-list" id="formAttachList"></div>
+        <div class="attach-upload" id="attachUploadBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 16V4m0 0L7 9m5-5l5 5"/><path d="M4 17v1a2 2 0 002 2h12a2 2 0 002-2v-1"/></svg>
+          <span>点击上传证书扫描件 / PDF / 图片（可多选）</span>
+          <input type="file" id="attachFileInput" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx,.zip">
+        </div>
+        <p class="attach-tip">附件保存在浏览器本地（IndexedDB），可随时下载，也可复制到其他电脑</p>
+      </div>
+    </form>
+    <div class="modal-foot">
+      <button class="btn-plain" id="formCancel">取消</button>
+      <button class="btn-primary" id="formSave">保存成果</button>
+    </div>
+  </div>
+</div>
+
+<!-- 删除确认弹层 -->
+<div class="modal-mask" id="delMask" hidden>
+  <div class="modal modal-sm">
+    <div class="modal-head"><h3>删除确认</h3></div>
+    <div class="modal-body del-body">
+      <p>确定要删除这条成果吗？</p>
+      <p class="del-title" id="delTargetTitle"></p>
+      <p class="del-warn">删除后不可恢复，请谨慎操作。</p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-plain" id="delCancel">取消</button>
+      <button class="btn-danger" id="delConfirm">确认删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- 成果详情弹窗 -->
+<div class="modal-mask" id="detailMask" hidden>
+  <div class="modal modal-detail">
+    <div class="modal-head">
+      <h3>成果详情</h3>
+      <button class="modal-close" id="detailClose">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="modal-body detail-body">
+      <div class="detail-head-row">
+        <div class="type-badge" id="detailBadge">📄</div>
+        <div>
+          <div class="detail-title" id="detailTitle"></div>
+          <div class="detail-meta" id="detailMeta"></div>
+        </div>
+      </div>
+      <div class="detail-desc" id="detailDesc"></div>
+      <div class="detail-tags" id="detailTags"></div>
+      <div class="detail-attach-head">
+        <span>材料附件 <em id="detailAttachCount"></em></span>
+      </div>
+      <div class="attach-list" id="detailAttachList"></div>
+      <div class="detail-empty" id="detailAttachEmpty">该成果暂无附件材料</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-plain" id="detailEditBtn">编辑成果</button>
+      <button class="btn-primary" id="detailDownloadAll">下载全部附件</button>
+    </div>
+  </div>
+</div>
+
+<!-- 图片预览弹层 -->
+<div class="modal-mask" id="previewMask" hidden>
+  <div class="preview-box">
+    <div class="preview-head">
+      <span id="previewName"></span>
+      <button class="modal-close" id="previewClose">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="preview-body"><img id="previewImg" alt="预览"></div>
+    <div class="preview-foot">
+      <button class="btn-primary" id="previewDownload">下载</button>
+    </div>
+  </div>
+</div>
+
+<!-- 轻提示 -->
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
