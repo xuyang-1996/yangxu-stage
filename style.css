@@ -325,12 +325,25 @@ svg{display:block}
   .sidebar{width:200px}
   .main{margin-left:200px;padding:0 18px 40px}
   .block-card{min-height:150px}
+  /* 平板/小桌面：下载勾选改为 3 列（避免手机宽度才生效） */
+  .dl-types{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 }
 @media(max-width:720px){
   .sidebar{display:none}
   .main{margin-left:0}
   .blocks-grid{grid-template-columns:repeat(2,1fr);gap:12px}
-  .block-card{min-height:150px}
+  .block-card{min-height:160px}
+  /* 手机端：板块色块适度加高，给文字更多空间（不动桌面端） */
+  .block-shape{top:70%;bottom:4%;height:26%}
+  .block-info{right:55px;padding:4px 0 0 8px;gap:1px}
+  .block-name{font-size:12px;line-height:1.15}
+  .block-en{font-size:9.5px;letter-spacing:.2px}
+  .block-count{right:10px;font-size:10.5px;padding:0 6px 4px 0}
+  /* 手机端：下载板块名缩小让 3 列能装下完整板块名 */
+  .dl-type{padding:9px 10px;gap:8px}
+  .dl-type input{width:14px;height:14px}
+  .dl-type-name{font-size:12px}
+  .dl-type-count{font-size:10.5px}
   /* 手机端：下载勾选改为 3×3 版式（8 板块排成 3-3-2） */
   .dl-types{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
   /* 移动端：按钮垂直堆叠避免挤压 */
