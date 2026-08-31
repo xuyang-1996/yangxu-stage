@@ -317,6 +317,8 @@ function closeAdminModal(){ $("#adminMask").hidden = true; }
 
 function toast(msg, dur){
   const t = $("#toast");
+  // 去除前缀 emoji/符号图标，保留纯文字（用户偏好简洁提示）
+  msg = String(msg).replace(/^[\s✅✓☁️⚠️🔒💾📥🎉⚡📦🛡️⭐🌟🔧🔍✨★☆💡❗❌🔔🖼️🌐]*/, '');
   t.textContent = msg;
   t.classList.add("show");
   clearTimeout(t._timer);
@@ -527,7 +529,20 @@ async function dlZip(){
       }
     }
   }
-  if(!files.length){ toast("所选板块暂无附件可下载"); return; }
+  if(!files.length){
+    // 区分两种情况：板块内真没附件 vs 有元数据但文件未上传
+    let metaCount = 0;
+    for(const t of dlSelected){
+      const rs = results.filter(r=>r.type===t);
+      metaCount += rs.reduce((s,r)=>s+(r.attachments||[]).length, 0);
+    }
+    if(metaCount > 0){
+      toast(`所选板块有 ${metaCount} 个附件，但云端下载失败——请在线上重新「恢复」zip 让附件传到 Storage`, 6000);
+    } else {
+      toast("所选板块暂无附件可下载");
+    }
+    return;
+  }
   toast(`正在打包 ${files.length} 个附件…`);
   await new Promise(r=>setTimeout(r, 40));
   const zip = await buildZip(files);
@@ -926,63 +941,6 @@ function exportData(){
   toast("已导出成果数据（附件文件本身不包含，仅记录文件名）");
 }
 
-/* 导出 Markdown 成果清单（按板块分类，附带描述与附件列表） */
-function exportList(){
-  if(!results.length){ toast("暂无成果可导出"); return; }
-  const cfg = TYPE_CFG;
-  const md = [];
-  md.push(`# Yang Xu'S stage · 成果清单`);
-  md.push(``);
-  const totalAtt = results.reduce((s,r)=>s+(r.attachments||[]).length, 0);
-  md.push(`- **导出时间**：${new Date().toLocaleString("zh-CN")}`);
-  md.push(`- **成果总数**：${results.length} 项`);
-  md.push(`- **附件总数**：${totalAtt} 个`);
-  md.push(``);
-  md.push(`---`);
-  md.push(``);
-  for(const k of BLOCK_ORDER){
-    const items = results.filter(r=>r.type===k);
-    if(!items.length) continue;
-    const c = cfg[k];
-    md.push(`## ${c.icon} ${c.label}（${c.labelEn}） · ${items.length} 项`);
-    md.push(``);
-    const sorted = [...items].sort((a,b)=>b.year - a.year);
-    for(const r of sorted){
-      const sc = STATUS_CFG[r.status] || STATUS_CFG.done;
-      md.push(`### ${r.title || "(无标题)"}`);
-      md.push(``);
-      md.push(`- **类型**：${c.label}`);
-      md.push(`- **年份**：${r.year}`);
-      md.push(`- **状态**：${sc.label}`);
-      if(r.tags && r.tags.length) md.push(`- **标签**：${r.tags.map(t=>`\`${t}\``).join("、")}`);
-      if(r.link) md.push(`- **链接**：[查看](${r.link})`);
-      const atts = r.attachments || [];
-      if(r.desc){
-        md.push(``);
-        String(r.desc).split(/\n/).forEach(l=>md.push(`  ${l}`));
-      }
-      if(atts.length){
-        md.push(``);
-        md.push(`**附件（${atts.length}）**：`);
-        atts.forEach(a => md.push(`- ${a.name} (${fmtSize(a.size)})`));
-      }
-      md.push(``);
-      md.push(`---`);
-      md.push(``);
-    }
-  }
-  const text = md.join("\n");
-  const blob = new Blob([text], { type:"text/markdown;charset=utf-8" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "Yang Xu'S stage 成果清单_" + new Date().toISOString().slice(0,10) + ".md";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
-  toast(`✓ 已导出 ${results.length} 项成果清单（Markdown）`);
-}
-
 /* ============================================================
    附件系统
    ============================================================ */
@@ -1268,7 +1226,6 @@ function bindEvents(){
 
   // 导出
   $("#exportBtn").addEventListener("click", exportData);
-  $("#exportListBtn").addEventListener("click", exportList);
 
   // 管理员登录 / 退出
   $("#adminLoginBtn").addEventListener("click", ()=>{
